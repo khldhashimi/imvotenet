@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
 sys.path.append(os.path.join(ROOT_DIR, 'models'))
-from ap_helper import APCalculator, parse_predictions, parse_groundtruths
+from models.ap_helper import APCalculator, parse_predictions, parse_groundtruths
 
 parser = argparse.ArgumentParser()
 # ImVoteNet related options
@@ -79,8 +79,8 @@ def my_worker_init_fn(worker_id):
     np.random.seed(np.random.get_state()[1][0] + worker_id)
 
 sys.path.append(os.path.join(ROOT_DIR, 'sunrgbd'))
-from sunrgbd_detection_dataset import SunrgbdDetectionVotesDataset, MAX_NUM_OBJ
-from model_util_sunrgbd import SunrgbdDatasetConfig
+from sunrgbd.sunrgbd_detection_dataset import SunrgbdDetectionVotesDataset, MAX_NUM_OBJ
+from sunrgbd.model_util_sunrgbd import SunrgbdDatasetConfig
 DATASET_CONFIG = SunrgbdDatasetConfig()
 TEST_DATASET = SunrgbdDetectionVotesDataset('val', num_points=NUM_POINT,
     augment=False, use_color=FLAGS.use_color, use_height=(not FLAGS.no_height),

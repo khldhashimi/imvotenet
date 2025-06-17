@@ -31,7 +31,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(ROOT_DIR, 'utils'))
-import pc_util
+from utils import pc_util
 import sunrgbd_utils
 from model_util_sunrgbd import SunrgbdDatasetConfig
 
@@ -81,12 +81,12 @@ class SunrgbdDetectionVotesDataset(Dataset):
         self.use_height = use_height
         self.use_imvote = use_imvote
         self.max_imvote_per_pixel = max_imvote_per_pixel
-        self.vote_dims = 1+self.max_imvote_per_pixel*4
+        self.vote_dims = 1+self.max_imvote_per_pixel*4 # 1 for number of votes, then each vote has 2D vector (x,y) and class id and index to the semantic cues
         # Total feature dimensions: geometric(5)+semantic(NUM_CLS)+texture(3) 
         self.image_feature_dim = NUM_CLS+8
         self.pre_load_2d_bboxes()
 
-    def pre_load_2d_bboxes(self):
+    def pre_load_2d_bboxes(self):  # class(chair) 0 0 -10 bbox2d_1(73.94) bbox2d_2(201.92) bbox2d_3(274.29) bbox2d_4(440.49) prob(0.6359118) #xmin, ymin, xmax, ymax
         self.cls_id_map = {}
         self.cls_score_map = {}
         self.bbox_2d_map = {}
@@ -102,7 +102,7 @@ class SunrgbdDetectionVotesDataset(Dataset):
                 # Filter out low-confidence 2D detections
                 if prob < 0.1:
                     continue
-                cls_id_list.append(sunrgbd_utils.type2class[det_info[0]])
+                cls_id_list.append(sunrgbd_utils.type2class[det_info[0]]) # type2class={'bed':0, 'table':1, 'sofa':2, 'chair':3, 'toilet':4, 'desk':5, 'dresser':6, 'night_stand':7, 'bookshelf':8, 'bathtub':9}
                 cls_score_list.append(prob)
                 bbox_2d_list.append(np.array([float(det_info[i]) for i in range(4,8)]).astype(np.int32))
             self.cls_id_map[scan_name] = cls_id_list
@@ -136,6 +136,17 @@ class SunrgbdDetectionVotesDataset(Dataset):
         point_votes = np.load(os.path.join(self.data_path, scan_name)+'_votes.npz')['point_votes'] # Nx10
         if self.use_imvote:
             # Read camera parameters
+            # for each scan, we have a calib.txt file with camera parameters
+            # calib.txt contains 2 lines:
+            # 1. Rtilt: 3x3 rotation matrix to rotate the point cloud from upright_depth to upright_camera, for example : 0.9998 0.0176 0.0050 -0.0175 0.9998 -0.0072 -0.0051 0.0071 0.9999
+            # [[ 0.9998,  0.0176,  0.0050],
+            #  [-0.0175,  0.9998, -0.0072],
+            #  [-0.0051,  0.0071,  0.9999]]
+            # 2. K: 3x3 camera intrinsic matrix for the camera, for example: 520.0 0.0 320.0 0.0 520.0 240.0 0.0 0.0 1.0
+            # [[520.0,   0.0, 320.0],
+            #  [  0.0, 520.0, 240.0],
+            #  [  0.0,   0.0,   1.0]]
+            
             calib_lines = [line for line in open(os.path.join(self.raw_data_path, 'calib', scan_name+'.txt')).readlines()]
             calib_Rtilt = np.reshape(np.array([float(x) for x in calib_lines[0].rstrip().split(' ')]), (3,3), 'F')
             calib_K = np.reshape(np.array([float(x) for x in calib_lines[1].rstrip().split(' ')]), (3,3), 'F')
@@ -145,6 +156,10 @@ class SunrgbdDetectionVotesDataset(Dataset):
             full_img_width = full_img.shape[1]
             
             # ------------------------------- 2D IMAGE VOTES ------------------------------
+            '''
+            This is the main loop that iterates through each detected 2D object to calculate vote maps.
+            A "vote" is a 2D vector from a pixel within a bounding box to the center of that box.
+            '''
             cls_id_list = self.cls_id_map[scan_name]
             cls_score_list = self.cls_score_map[scan_name]
             bbox_2d_list = self.bbox_2d_map[scan_name]
@@ -155,33 +170,57 @@ class SunrgbdDetectionVotesDataset(Dataset):
                 if self.train and np.random.random()>0.5:
                     continue
 
-                obj_img = full_img[ymin:ymax, xmin:xmax, :]
-                obj_h = obj_img.shape[0]
+                obj_img = full_img[ymin:ymax, xmin:xmax, :] #Crops the rectangular region of the object from the full RGB image using the bounding box coordinates.
+                obj_h = obj_img.shape[0] #Gets the height and width of the cropped object image.
                 obj_w = obj_img.shape[1]
                 # Bounding box coordinates (4 values), class id, index to the semantic cues
-                meta_data = (xmin, ymin, obj_h, obj_w, cls2d, i2d)
+                meta_data = (xmin, ymin, obj_h, obj_w, cls2d, i2d) # Creates a tuple to store essential metadata about the object: its top-left corner (xmin, ymin), 
+                                                                   # its dimensions (obj_h, obj_w), its class ID (cls2d), and its original index (i2d).
                 if obj_h == 0 or obj_w == 0:
                     continue
 
                 # Use 2D box center as approximation
-                uv_centroid = np.array([int(obj_w/2), int(obj_h/2)])
+                uv_centroid = np.array([int(obj_w/2), int(obj_h/2)]) # Calculates the pixel coordinates of the center of the cropped object image.
+
                 uv_centroid = np.expand_dims(uv_centroid, 0)
 
-                v_coords, u_coords = np.meshgrid(range(obj_h), range(obj_w), indexing='ij')
+                v_coords, u_coords = np.meshgrid(range(obj_h), range(obj_w), indexing='ij') # Creates two grids: one (v_coords) where each element is the row index (y-coordinate)
+                                                                                            # and one (u_coords) where each element is the column index (x-coordinate).
                 img_vote = np.transpose(np.array([u_coords, v_coords]), (1,2,0))
-                img_vote = np.expand_dims(uv_centroid, 0) - img_vote 
+                img_vote = np.expand_dims(uv_centroid, 0) - img_vote # This is the core voting step. It subtracts the coordinate of each pixel from the centroid coordinate.
+                                                                     # The result, img_vote, is a map where each entry img_vote[y, x] contains the 2D vector [center_x - x, center_y - y]
+                                                                     # pointing from that pixel to the object's center.
 
                 obj_img_list.append((meta_data, img_vote))
 
-            full_img_votes = np.zeros((full_img_height,full_img_width,self.vote_dims), dtype=np.float32)
+            '''
+            Aggregating Votes into a Global Map
+            This section creates a single large vote map for the entire image and populates it with the votes calculated for each object
+            '''
+            full_img_votes = np.zeros((full_img_height,full_img_width,self.vote_dims), dtype=np.float32) # Initializes a large array (a "vote map") for the full image, filled with zeros.
+                                                                                                         # Its dimensions are (height, width, vote_dims), where vote_dims is configured to store multiple votes per pixel.
+            '''
+            full_img_votes (image_pixels_h, image_pixels_w, 0) = number of votes at that pixel
+            full_img_votes (image_pixels_h, image_pixels_w, 1:3) = first vote vector (x,y)
+            full_img_votes (image_pixels_h, image_pixels_w, 3) = first vote class (0 , 1 ... NUM_CLS-1)
+            full_img_votes (image_pixels_h, image_pixels_w, 4) = first vote index to the semantic cues
+            full_img_votes (image_pixels_h, image_pixels_w, 5:7) = second vote vector (x,y)
+            full_img_votes (image_pixels_h, image_pixels_w, 7) = second vote class (0 , 1 ... NUM_CLS-1)
+            full_img_votes (image_pixels_h, image_pixels_w, 8) = second vote index to the semantic cues
+            full_img_votes (image_pixels_h, image_pixels_w, 9:11) = third vote vector (x,y)
+            full_img_votes (image_pixels_h, image_pixels_w, 11) = third vote class (0 , 1 ... NUM_CLS-1)
+            full_img_votes (image_pixels_h, image_pixels_w, 12) = third vote index to the semantic cues
+            '''
+        
             # Empty votes: 2d box index is set to -1
-            full_img_votes[:,:,3::4] = -1.
+            full_img_votes[:,:,3::4] = -1. # 3::4 in the third dimension means “start at index 3, then every 4th index thereafter.
+                                           # In a length-13 axis (vote_dims=13), 3::4 picks out channel indices 3, 7, 11.
 
             for obj_img_data in obj_img_list:
                 meta_data, img_vote = obj_img_data
-                u0, v0, h, w, cls2d, i2d = meta_data
+                u0, v0, h, w, cls2d, i2d = meta_data # extracting the bounding box coordinates (u0, v0 top-left), dimensions (h, w in pixels), class ID (cls2d), and index (i2d).
                 for u in range(u0, u0+w):
-                    for v in range(v0, v0+h):
+                    for v in range(v0, v0+h): # These nested loops iterate over every pixel (v, u) that falls within the current object's bounding box in the full image.
                         iidx = int(full_img_votes[v,u,0])
                         if iidx >= self.max_imvote_per_pixel: 
                             continue
@@ -329,11 +368,11 @@ class SunrgbdDetectionVotesDataset(Dataset):
 
         ret_dict = {}
         ret_dict['point_clouds'] = point_cloud.astype(np.float32)
-        ret_dict['center_label'] = target_bboxes.astype(np.float32)[:,0:3]
-        ret_dict['heading_class_label'] = angle_classes.astype(np.int64)
+        ret_dict['center_label'] = target_bboxes.astype(np.float32)[:,0:3] # 3D box center
+        ret_dict['heading_class_label'] = angle_classes.astype(np.int64) # Convert continuous angle to discrete class return is class of int32 of 0,1,...,N-1 and angle_residual such that class*(2pi/N) + angle_residual = angle
         ret_dict['heading_residual_label'] = angle_residuals.astype(np.float32)
-        ret_dict['size_class_label'] = size_classes.astype(np.int64)
-        ret_dict['size_residual_label'] = size_residuals.astype(np.float32)
+        ret_dict['size_class_label'] = size_classes.astype(np.int64) # 'bed':0, 'table':1, 'sofa':2, 'chair':3, 'toilet':4, 'desk':5, 'dresser':6, 'night_stand':7, 'bookshelf':8, 'bathtub':9
+        ret_dict['size_residual_label'] = size_residuals.astype(np.float32) # size - mean_size
         target_bboxes_semcls = np.zeros((MAX_NUM_OBJ))
         target_bboxes_semcls[0:bboxes.shape[0]] = bboxes[:,-1] # from 0 to 9
         ret_dict['sem_cls_label'] = target_bboxes_semcls.astype(np.int64)

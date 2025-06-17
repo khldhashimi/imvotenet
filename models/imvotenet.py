@@ -89,7 +89,9 @@ class ImVoteNet(nn.Module):
         self.image_feature_dim = image_feature_dim
 
         # Backbone point feature learning
-        self.backbone_net = Pointnet2Backbone(input_feature_dim=self.input_feature_dim)
+        self.backbone_net = Pointnet2Backbone(input_feature_dim=self.input_feature_dim) # inputs=> pointcloud:(Btchsize, N, 3 + input_feature_dim)
+        # The backbone network outputs a list of point features at different scales(end_points: {XXX_xyz, XXX_features, XXX_inds})
+                
 
         # Image feature extractor
         self.image_feature_extractor = ImageFeatureModule(max_imvote_per_pixel=self.max_imvote_per_pixel)

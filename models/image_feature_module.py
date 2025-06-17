@@ -119,28 +119,54 @@ class ImageFeatureModule(nn.Module):
         # == 1. PROJECT 3D POINTS TO 2D IMAGE PLANE ==
         # Transform 3D seed point coordinates from world/depth space to camera image space (u,v coordinates)
         xyz2 = torch.matmul(end_points['calib_Rtilt'].transpose(2,1), (1/(end_points['scale']**2)).unsqueeze(-1).unsqueeze(-1)*end_points['fp2_xyz'].transpose(2,1))
+        # end_points['calib_Rtilt'] has shape (batch, 3, 3) => dimension 0 is batch size
+        # xyz2 has shape (batch, 3, num_seed) => dimension 0 is batch size, 1 is xyz coordinates
+        ''' 
+        These lines perform coordinate "swizzling" and flipping. They rearrange and negate axes to match the specific coordinate system convention expected by 
+        the camera projection model (e.g., converting from a system where Y is forward and Z is up to one where Y is down and Z is forward).
+        '''
         xyz2 = xyz2.transpose(2,1)
-        xyz2[:,:,[0,1,2]] = xyz2[:,:,[0,2,1]]
-        xyz2[:,:,1] *= -1
-        end_points['xyz_camera_coord'] = xyz2
+        xyz2[:,:,[0,1,2]] = xyz2[:,:,[0,2,1]]# Swap Y and Z axes
+        xyz2[:,:,1] *= -1 # Flip Y axis to match camera convention
+        end_points['xyz_camera_coord'] = xyz2 # 
+        # xyz2 now has shape (batch, num_seed, 3) with coordinates in the camera's coordinate system
         # Apply camera intrinsic matrix K to get pixel coordinates
-        uv = torch.matmul(xyz2, end_points['calib_K'].transpose(2,1))
-        uv[:,:,0] /= uv[:,:,2] # Perspective division
+        uv = torch.matmul(xyz2, end_points['calib_K'].transpose(2,1))# the resulting uv has shape (batch, num_seed, 3)
+        # calib_k= 
+            # [[fx,     0.0,   Ox],
+            #  [0.0,    fy,    Oy],
+            #  [0.0,    0.0,   1.0]]
+        # where fx, fy are focal lengths and Ox, Oy are optical center offsets
+        # calib_k * xyz2 gives us the pixel coordinates in homogeneous form (u, v, z) => (fx*x + Ox*z, fy*y + Oy*z, z)
+        # 3D (x,y ,z) to 2D (u,v) = fx*x/z + Ox, fy*y/z + Oy  (u and v in pixels)
+        # Perform perspective division to convert from homogeneous coordinates to pixel coordinates
+        # (fx*x + Ox*z, fy*y + Oy*z) / z = (fx*x/z + Ox, fy*y/z + Oy)
+        uv[:,:,0] /= uv[:,:,2] # Perspective division 
         uv[:,:,1] /= uv[:,:,2]
 
         # Round to get integer pixel indices
-        u = (uv[:,:,0]-1).round()
-        v = (uv[:,:,1]-1).round()
+        u = (uv[:,:,0]-1).round()# u hast shape (batch, num_seed)
+        v = (uv[:,:,1]-1).round()# v has shape (batch, num_seed)
 
         # == 2. GATHER 2D VOTE INFORMATION ==
         # Look up pre-computed 2D vote data using the pixel indices
         full_img_votes_1d = end_points['full_img_votes_1d'] # The large, flattened tensor of 2D vote data
         # Calculate the starting index for each seed point in the flattened tensor
+        '''
+        This line 
         idx_beg = (u.float() + v.float() * end_points['full_img_width'].unsqueeze(-1).float())*self.vote_dims
-        idx_beg = idx_beg.long()
+        of the code converts the 2D pixel coordinates (u, v) into a 1D index. This is a standard formula for "flattening" a 2D grid into a 1D array.
+        (v * full_img_width): Calculates how many pixels are in all the full rows above the current pixel v.
+        (+ u): Adds the column index u to account for the position within the current row.
+        Imagine a 500-pixel-wide image. To find the 1D index for the pixel at row v=10 and column u=25,
+        the calculation would be (10 * 500) + 25 = 5025. This means it's the 5025th pixel in the image if you were to read them one by one, row by row.
+        (* self.vote_dims): each pixel's vote occupies "vote_dims" places in the flattened tensor.
+        '''
+        idx_beg = (u.float() + v.float() * end_points['full_img_width'].unsqueeze(-1).float())*self.vote_dims # the idx_beg has shape (batch, num_seed)
+        idx_beg = idx_beg.long() # Convert to long type for indexing. long type is required for indexing tensors in PyTorch.
         
         # Get the number of valid votes for this pixel
-        seed_gt_votes_cnt = torch.gather(full_img_votes_1d, 1, idx_beg)
+        seed_gt_votes_cnt = torch.gather(full_img_votes_1d, 1, idx_beg) 
         
         img_feat_list = []
         batch_size = xyz2.shape[0]
