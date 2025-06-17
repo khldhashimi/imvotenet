@@ -38,7 +38,7 @@ def append_img_feat(img_feat_list, end_points):
     batch_size = xyz.shape[0]
     num_seed = xyz.shape[1]
     fp2_features = end_points['fp2_features']    # (B, C, num_seed) 3D features from the PointNet++ backbone
-    semantic_cues = end_points['cls_score_feats']# (B, K, C_sem) Pre-computed semantic features for each 2D box instance
+    semantic_cues = end_points['cls_score_feats']# (B, K, C_sem) Pre-computed semantic features for each 2D box instance => class probabilities from the 2d detection model
     texture_cues = end_points['full_img_1d']     # (B, H*W*C_tex) Flattened texture features from the ResNet backbone
     calib_Rtilt = end_points['calib_Rtilt']      # (B, 3, 3) Rotation matrix to align depth camera with gravity
 
@@ -49,21 +49,48 @@ def append_img_feat(img_feat_list, end_points):
         # the 3D point and the 2D vote's location.
 
         # Create a 2D vector representing the 2D vote location and rotate it into the 3D camera's coordinate system
-        img_feat_xyz_camera = torch.cat((img_feat[:,:,0:2], torch.zeros((batch_size, num_seed, 1)).cuda()), -1)
-        img_feat_xyz_depth = img_feat_xyz_camera[:,:,[0,2,1]]
-        img_feat_xyz_depth[:,:,2] *= -1
-        # Align the vector with the upright depth coordinate system using the Rtilt matrix
-        img_feat_xyz_upright_depth = torch.matmul(calib_Rtilt, img_feat_xyz_depth.transpose(2,1))
+        img_feat_xyz_camera = torch.cat((img_feat[:,:,0:2], torch.zeros((batch_size, num_seed, 1)).cuda()), -1) # shape (B, num_seed, 3)  (2d vote coordinates (x, y in pixels) with z=0)
+        #         /z (depth in image plane)
+        #        /
+        #       /_ _ _ _ x (rigth in image plane)    Camera coordinate system
+        #       |
+        #       |
+        #       | y (down in image plan)
+        img_feat_xyz_depth = img_feat_xyz_camera[:,:,[0,2,1]] # Swap Y and Z axes to match the depth camera's coordinate system, shape (B, num_seed, 3)
+        #                                                       (x, z=0, y) => (x, depth, y)
+        #         /y
+        #        /
+        #       /_ _ _ _ x     intermediate coordinate system
+        #       |
+        #       |
+        #       | z
+        img_feat_xyz_depth[:,:,2] *= -1 # Flip the Z axis       (x, z=0, -y) => (x, depth, -y)
+        #
+        # z(up) ^  / y(away from lidar)
+        #       | /
+        #       |/_ _ _ _ x (right side of lidar)   intermediate coordinate system
         
+        # Align the vector with the upright depth coordinate system using the Rtilt matrix
+        img_feat_xyz_upright_depth = torch.matmul(calib_Rtilt, img_feat_xyz_depth.transpose(2,1)) # calib_Rtilt * (B, 3, num_seed)   => (x, depth=0, -y)(in pixels) => (x', y', z') in the upright depth coordinate system
+                                                                                                  # img_feat_xyz_upright_depth shape (B, 3, num_seed) 
         # Calculate the "ray angle": a normalized vector from the camera origin through the 3D seed point
-        ray_angle = xyz + img_feat_xyz_upright_depth.transpose(2,1)
-        ray_angle /= torch.sqrt(torch.sum(ray_angle**2, -1)+1e-6).unsqueeze(-1) # Normalize the vector
-        img_mask = img_feat[:,:,-1].unsqueeze(-1) # Mask to zero out points that don't have a valid 2D vote
+        ray_angle = xyz + img_feat_xyz_upright_depth.transpose(2,1) # shape (B, num_seed, 3) (x3d+x2d, y3d+0.0, z3d-y2d)
+        ray_angle /= torch.sqrt(torch.sum(ray_angle**2, -1)+1e-6).unsqueeze(-1) # Normalize the vector, torch.sqrt(....) has the shape (B, num_seed), after unsqueeze(-1) it has the shape (B, num_seed, 1)
+        img_mask = img_feat[:,:,-1].unsqueeze(-1) # Mask to zero out points that don't have a valid 2D vote,
+        # img_feat has shape (B, num_seed, 6), then img_feat[:,:,-1] has shape (B, num_seed).
+        # unsqueeze(-1) adds a new dimension at the end, making the shape (B, num_seed, 1).
+
         ray_angle *= img_mask
 
         # Compute C'': A sophisticated geometric feature representing the projected offset
         new_img_feat_xz_upright = torch.zeros((batch_size, num_seed, 2)).cuda()
         new_img_feat_xz_upright[:,:,0] = ray_angle[:,:,0]/(ray_angle[:,:,1]+1e-6) * xyz[:,:,1] - xyz[:,:,0]
+        # ray_angle[:,:,0] => x3d(of seed point) + x2d(of the center of the image object)
+        # ray_angle[:,:,1] => y3d(of seed point) + 0.0
+        # xyz[:,:,1] => y3d(of seed point) it is the depth
+        # xyz[:,:,0] => x3d(of seed point)
+        # new_img_feat_xz_upright[:,:,0] => (x3d(of seed point) + x2d(of the center of the image object)) / (y3d(depth)) * y3d(of seed point) - x3d(of seed point)
+        # This computes the offset in the XZ plane, normalized by the Y coordinate.
         new_img_feat_xz_upright[:,:,1] = ray_angle[:,:,2]/(ray_angle[:,:,1]+1e-6) * xyz[:,:,1] - xyz[:,:,2]
         new_img_feat_xz_upright *= img_mask
 
@@ -131,6 +158,11 @@ class ImageFeatureModule(nn.Module):
         end_points['xyz_camera_coord'] = xyz2 # 
         # xyz2 now has shape (batch, num_seed, 3) with coordinates in the camera's coordinate system
         # Apply camera intrinsic matrix K to get pixel coordinates
+
+        ##################################################################################################
+        '''
+        we want to project the 3D points in xyz2 onto the 2D image plane using the camera intrinsic matrix K.
+        '''
         uv = torch.matmul(xyz2, end_points['calib_K'].transpose(2,1))# the resulting uv has shape (batch, num_seed, 3)
         # calib_k= 
             # [[fx,     0.0,   Ox],
@@ -147,7 +179,7 @@ class ImageFeatureModule(nn.Module):
         # Round to get integer pixel indices
         u = (uv[:,:,0]-1).round()# u hast shape (batch, num_seed)
         v = (uv[:,:,1]-1).round()# v has shape (batch, num_seed)
-
+        #######################################################################################################
         # == 2. GATHER 2D VOTE INFORMATION ==
         # Look up pre-computed 2D vote data using the pixel indices
         full_img_votes_1d = end_points['full_img_votes_1d'] # The large, flattened tensor of 2D vote data
@@ -175,21 +207,25 @@ class ImageFeatureModule(nn.Module):
         # For each of the possible votes (e.g., up to 3)
         for i in range(self.max_imvote_per_pixel):
             # Gather the 2D coordinates of the vote (e.g., center of the 2D box)
-            vote_i_0 = torch.gather(full_img_votes_1d, 1, idx_beg+1+i*4)
-            vote_i_1 = torch.gather(full_img_votes_1d, 1, idx_beg+1+i*4+1)
-            seed_gt_votes_i = torch.cat((vote_i_0.unsqueeze(-1), vote_i_1.unsqueeze(-1)), -1)
+            vote_i_0 = torch.gather(full_img_votes_1d, 1, idx_beg+1+i*4) # first/second/third vote vector (x coordinate in pixels), shape (batch, num_seed)
+            vote_i_1 = torch.gather(full_img_votes_1d, 1, idx_beg+1+i*4+1) # # first/second/third vote vector (y coordinate in pixels), shape (batch, num_seed)
+            seed_gt_votes_i = torch.cat((vote_i_0.unsqueeze(-1), vote_i_1.unsqueeze(-1)), -1) # first/second/third vote vector (x y coordinate in pixels), shape (batch, num_seed, 2)
             # Create a mask indicating if this vote is valid for the point
-            seed_gt_votes_mask_i = (seed_gt_votes_cnt > i).float()
+            seed_gt_votes_mask_i = (seed_gt_votes_cnt > i).float() # shape (batch, num_seed)
 
             # Scale the 2D vote coordinates by the point's depth
-            seed_gt_votes_i *= xyz2[:,:,2].unsqueeze(-1)
-            seed_gt_votes_i /= end_points['calib_K'][:,0,0].unsqueeze(-1).unsqueeze(-1)
+            seed_gt_votes_i *= xyz2[:,:,2].unsqueeze(-1) # xyz2 is the 3D ccordinates of the seed points in the camera coordinate system shape (batch, num_seed, 2)
+            seed_gt_votes_i /= end_points['calib_K'][:,0,0].unsqueeze(-1).unsqueeze(-1) # pseudo 3D vote: PC′ in the original papaer without z axis, shape (batch, num_seed, 2)
 
             # Gather the instance ID of the 2D object this vote belongs to
-            ins_id = torch.gather(full_img_votes_1d, 1, idx_beg+1+i*4+3).unsqueeze(-1)
+            ins_id = torch.gather(full_img_votes_1d, 1, idx_beg+1+i*4+3).unsqueeze(-1) # shape (batch, num_seed, 1)
             # Concatenate all gathered info: [2D_vote_xy, pixel_uv, instance_id, valid_mask]
-            img_feat_list_i = torch.cat((seed_gt_votes_i, u.unsqueeze(-1), v.unsqueeze(-1), ins_id, seed_gt_votes_mask_i.unsqueeze(-1)), -1)
-            img_feat_list.append(img_feat_list_i)
+            img_feat_list_i = torch.cat((seed_gt_votes_i, u.unsqueeze(-1), v.unsqueeze(-1), ins_id, seed_gt_votes_mask_i.unsqueeze(-1)), -1) # shape (batch, num_seed, 2+1+1+1+1)
+            img_feat_list.append(img_feat_list_i) # shape (batch, num_seed, 6)
+            # each element of img_feat_list is a tensor of (batch, num_seed, 0:2) = ith pseudo 3D vote, vote coordinates (x, y in metrics)
+            #                                              (batch, num_seed, 2:4) = corresponding pixel of seed point (u, v in pixels)
+            #                                              (batch, num_seed, 4) = instance ID of the 2D object ith vote belongs to
+            #                                              (batch, num_seed, 5) = mask indicating if ith vote is valid for the point (1 if valid, 0 if not)
 
         return img_feat_list
 

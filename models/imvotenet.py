@@ -131,8 +131,8 @@ class ImVoteNet(nn.Module):
         end_points = {}
         end_points.update(inputs)
         end_points = self.backbone_net(inputs['point_clouds'], end_points)
-        img_feat_list = self.image_feature_extractor(end_points)
-        assert len(img_feat_list) == self.max_imvote_per_pixel
+        img_feat_list = self.image_feature_extractor(end_points) # img_feat_list(batch, num_seed, 6)
+        assert len(img_feat_list) == self.max_imvote_per_pixel # length of img_feat_list must be 3, max 3 different votes per pixel
         xyz, features, seed_inds = append_img_feat(img_feat_list, end_points)
         seed_sample_inds = sample_valid_seeds(features[:,-1,:], 1024).cuda()
         features = torch.gather(features, -1, seed_sample_inds.unsqueeze(1).repeat(1,features.shape[1],1))
