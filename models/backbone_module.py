@@ -33,9 +33,9 @@ class Pointnet2Backbone(nn.Module):
         super().__init__()
 
         self.sa1 = PointnetSAModuleVotes(
-                npoint=2048,
-                radius=0.2,
-                nsample=64,
+                npoint=2048, # number of seeds from whole point cloud
+                radius=0.2,#
+                nsample=64, # sample 64 points in the area around each seed with radius of 0.2m 
                 mlp=[input_feature_dim, 64, 64, 128],
                 use_xyz=True,
                 normalize_xyz=True
@@ -124,8 +124,8 @@ class Pointnet2Backbone(nn.Module):
         end_points['sa4_features'] = features
 
         # --------- 2 FEATURE UPSAMPLING LAYERS --------
-        features = self.fp1(end_points['sa3_xyz'], end_points['sa4_xyz'], end_points['sa3_features'], end_points['sa4_features'])
-        features = self.fp2(end_points['sa2_xyz'], end_points['sa3_xyz'], end_points['sa2_features'], features)
+        features = self.fp1(end_points['sa3_xyz'], end_points['sa4_xyz'], end_points['sa3_features'], end_points['sa4_features']) #(B, mlp[-1]=256, n) tensor of the features of the unknown features
+        features = self.fp2(end_points['sa2_xyz'], end_points['sa3_xyz'], end_points['sa2_features'], features) # (B, mlp[-1]=256, n) tensor of the features of the unknown features
         end_points['fp2_features'] = features
         end_points['fp2_xyz'] = end_points['sa2_xyz']
         num_seed = end_points['fp2_xyz'].shape[1]

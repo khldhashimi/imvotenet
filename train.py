@@ -244,10 +244,15 @@ def train_one_epoch():
         inputs = {'point_clouds': batch_data_label['point_clouds']}
         if FLAGS.use_imvotenet:
             inputs.update({'scale': batch_data_label['scale'],
-                           'calib_K': batch_data_label['calib_K'],
-                           'calib_Rtilt': batch_data_label['calib_Rtilt'],
+                           'calib_K': batch_data_label['calib_K'],# camera intrinsic matrix 
+                           'calib_Rtilt': batch_data_label['calib_Rtilt'], #Transform 3D seed point coordinates from world koordinate system to 3D point in camera koordinate system
+                           # c: camrera koordinate system, w: world coordinate system
+                           # X_c = Rtilt * X_w ( in homogeneous coordinates) 
+                           # X_c = [x_c, y_c, z_c, 1]^T = Mext * [x_w, y_w, z_w, 1]^T (Mext is the 4x4 transformation matrix from world to camera coordinates)
+                           # Mext = [Rtilt_3x3  T_3x1
+                           #          0_1x3         1] where Rtilt_3x3 is the 3x3 rotation matrix and T_3x1 is the 3x1 translation vector and 0_1x3 is a row vector 1x3 of zeros
                            'cls_score_feats': batch_data_label['cls_score_feats'],
-                           'full_img_votes_1d': batch_data_label['full_img_votes_1d'],
+                           'full_img_votes_1d': batch_data_label['full_img_votes_1d'], # A "vote" is a 2D vector from a pixel within a bounding box to the center of that box. it gets calculated in the sunrgbd_detection_dataset.py
                            'full_img_1d': batch_data_label['full_img_1d'],
                            'full_img_width': batch_data_label['full_img_width'],
                            })

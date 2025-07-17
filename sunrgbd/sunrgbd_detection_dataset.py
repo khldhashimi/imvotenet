@@ -4,7 +4,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-""" Dataset for 3D object detection on SUN RGB-D (with additional support for ImVoteNet).
+""" Dataset for 3D object detection on SUN RGB-D (with additional support for ImVoteNet)
 
 A sunrgbd oriented bounding box is parameterized by (cx,cy,cz), (l,w,h) -- (dx,dy,dz) in upright depth coord
 (Z is up, Y is forward, X is right ward), heading angle (from +X rotating to -Y) and semantic class
@@ -132,8 +132,11 @@ class SunrgbdDetectionVotesDataset(Dataset):
         """
         scan_name = self.scan_names[idx]
         point_cloud = np.load(os.path.join(self.data_path, scan_name)+'_pc.npz')['pc'] # Nx6
-        bboxes = np.load(os.path.join(self.data_path, scan_name)+'_bbox.npy') # K,8
-        point_votes = np.load(os.path.join(self.data_path, scan_name)+'_votes.npz')['point_votes'] # Nx10
+        bboxes = np.load(os.path.join(self.data_path, scan_name)+'_bbox.npy') # K,8 => 3D bboxes center(x.y.z), half of size(l/2,w/2,h/2), heading_angle class_id
+        point_votes = np.load(os.path.join(self.data_path, scan_name)+'_votes.npz')['point_votes'] # gets cumputed in votenet/sunrgbd/sunrgbd_data.py
+            #Nx10 of (N,10) with 0/1 indicating whether the 3D point belongs to an object,
+            #then three sets of GT votes (votes to the center of 3D bbox for each 3D point inside the bbos) for up to three objects. If the point is only in one
+            #object's OBB, then the three GT votes are the same.
         if self.use_imvote:
             # Read camera parameters
             # for each scan, we have a calib.txt file with camera parameters
@@ -339,6 +342,8 @@ class SunrgbdDetectionVotesDataset(Dataset):
             # NOTE: The mean size stored in size2class is of full length of box edges,
             # while in sunrgbd_data.py data dumping we dumped *half* length l,w,h.. so have to time it by 2 here 
             box3d_size = bbox[3:6]*2
+            #size_class=>'bed':0, 'table':1, 'sofa':2, 'chair':3, 'toilet':4, 'desk':5, 'dresser':6, 'night_stand':7, 'bookshelf':8, 'bathtub':9
+            # size_residual is the difference between the box size and the mean size of the class
             size_class, size_residual = DC.size2class(box3d_size, DC.class2type[semantic_class])
             box3d_centers[i,:] = box3d_center
             angle_classes[i] = angle_class

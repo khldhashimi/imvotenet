@@ -214,7 +214,7 @@ class ImageFeatureModule(nn.Module):
             seed_gt_votes_mask_i = (seed_gt_votes_cnt > i).float() # shape (batch, num_seed)
 
             # Scale the 2D vote coordinates by the point's depth
-            seed_gt_votes_i *= xyz2[:,:,2].unsqueeze(-1) # xyz2 is the 3D ccordinates of the seed points in the camera coordinate system shape (batch, num_seed, 2)
+            seed_gt_votes_i *= xyz2[:,:,2].unsqueeze(-1) # xyz2 is the 3D ccordinates of the seed points in the camera coordinate system, shape (batch, num_seed, 2)
             seed_gt_votes_i /= end_points['calib_K'][:,0,0].unsqueeze(-1).unsqueeze(-1) # pseudo 3D vote: PC′ in the original papaer without z axis, shape (batch, num_seed, 2)
 
             # Gather the instance ID of the 2D object this vote belongs to
