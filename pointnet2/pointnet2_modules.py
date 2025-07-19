@@ -230,27 +230,31 @@ class PointnetSAModuleVotes(nn.Module):
             (B, npoint) tensor of the inds
         """
 
-        xyz_flipped = xyz.transpose(1, 2).contiguous()
+        xyz_flipped = xyz.transpose(1, 2).contiguous() # xyz (B, N, 3): xyz of the whole 3D pointclouad
         if inds is None:
-            inds = pointnet2_utils.furthest_point_sample(xyz, self.npoint)
+            inds = pointnet2_utils.furthest_point_sample(xyz, self.npoint) # sampling npoint different points in pointcloud with maximum distance
+            # inds is the indices of the of points (npoint) with maximum distance
         else:
             assert(inds.shape[1] == self.npoint)
         new_xyz = pointnet2_utils.gather_operation(
             xyz_flipped, inds
         ).transpose(1, 2).contiguous() if self.npoint is not None else None
-
+        # new_xyz (B, npoint, 3): 3D coordinate of the sampled points with the maximum distance
         if not self.ret_unique_cnt:
-            grouped_features, grouped_xyz = self.grouper(
-                xyz, new_xyz, features
-            )  # (B, C, npoint, nsample)
+            grouped_features, grouped_xyz = self.grouper( # the feature and the 3D coordinates of the points inside the balls
+                # number of balls: npoint, number of the point inside each ball: nsample, number of features for each point inside a ball: C
+                xyz, new_xyz, features # for the input raw pointcloud feature is the intensity C=1
+            )  # (B, C, npoint, nsample); example for the fist SA Module=> (B, 1, 2048, 64)
+               # if use_xyz=TRUE ==> grouped_features (B, C+3, npoint, nsample); example for the fist SA Module=> (B, 1+3, 2048, 64)
         else:
             grouped_features, grouped_xyz, unique_cnt = self.grouper(
                 xyz, new_xyz, features
             )  # (B, C, npoint, nsample), (B,3,npoint,nsample), (B,npoint)
 
-        new_features = self.mlp_module(
+        new_features = self.mlp_module(# new_features is the output of the multi layer precepton layers
+            # number of input features is 1 and number of the output features 128
             grouped_features
-        )  # (B, mlp[-1], npoint, nsample)
+        )  # (B, mlp[-1], npoint, nsample) ; example for the fist SA Module=> (B, 128, 2048, 64)
         if self.pooling == 'max':
             new_features = F.max_pool2d(
                 new_features, kernel_size=[1, new_features.size(3)]

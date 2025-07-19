@@ -345,7 +345,7 @@ class QueryAndGroup(nn.Module):
                     idx[i_batch, i_region, :] = all_ind
 
 
-        xyz_trans = xyz.transpose(1, 2).contiguous()
+        xyz_trans = xyz.transpose(1, 2).contiguous() # xyz_trans (B, 3 N)
         grouped_xyz = grouping_operation(xyz_trans, idx)  # (B, 3, npoint, nsample)
         grouped_xyz -= new_xyz.transpose(1, 2).unsqueeze(-1)
         if self.normalize_xyz:
@@ -407,9 +407,9 @@ class GroupAll(nn.Module):
             (B, C + 3, 1, N) tensor
         """
 
-        grouped_xyz = xyz.transpose(1, 2).unsqueeze(2)
+        grouped_xyz = xyz.transpose(1, 2).unsqueeze(2) # grouped_xyz (B, 3, 1, N)
         if features is not None:
-            grouped_features = features.unsqueeze(2)
+            grouped_features = features.unsqueeze(2) # grouped_features (B, C, 1, N) C: Number of the feature, for Raw pointcloud only intensity
             if self.use_xyz:
                 new_features = torch.cat(
                     [grouped_xyz, grouped_features], dim=1
