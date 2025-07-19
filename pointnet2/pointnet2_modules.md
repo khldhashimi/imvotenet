@@ -47,6 +47,21 @@ Purpose: To create a rich, abstracted feature descriptor for each local region t
 Output: A final new_features tensor of shape (B, mlp[-1], npoint).
 
 **Initialization Parameters**
+
+## Initialization Parameters
+
+| Parameter  | Type         | Description |
+|------------|--------------|-------------|
+| `mlp`      | List[int]    | A list defining the architecture of the shared MLP. The first element is the input feature dimension, and subsequent elements are the output sizes of each hidden layer and the final output layer. |
+| `npoint`   | int          | The number of points to sample from the input cloud (i.e., the number of centroids for the local regions). |
+| `radius`   | float        | The radius of the ball query used for grouping points around each centroid. |
+| `nsample`  | int          | The maximum number of points to sample within each ball query region. |
+| `bn`       | bool         | If `True`, enables Batch Normalization within the MLP. Default is `True`. |
+| `use_xyz`  | bool         | If `True`, concatenates the local XYZ coordinates to the point features before passing them to the MLP, making the network explicitly aware of local geometry.|
+| `pooling`  | str          | The type of pooling to use for feature aggregation. Options are 'max', 'avg', or 'rbf'. Default is 'max'.|
+| `sigma`    | float        | The sigma value used for the Radial Basis Function (rbf) pooling kernel.|
+| `normalize_xyz` | bool    |
+If True, normalizes the local XYZ coordinates of points in a group by the ball query radius.|
 ## Forward Pass
 
 ### Inputs
@@ -56,3 +71,10 @@ Output: A final new_features tensor of shape (B, mlp[-1], npoint).
 | `xyz`     | (B, N, 3)   | The XYZ coordinates of the input point cloud. |
 | `features`| (B, C, N)   | The input features for each point (e.g., color, intensity). `C` is the input feature dimension. Can be `None`. |
 | `inds`    | (B, npoint) | Optional. Pre-computed indices of the points to be used as centroids. If `None`, FPS is used to generate them. |
+## Returns
+
+| Variable      | Shape                        | Description |
+|---------------|------------------------------|-------------|
+| `new_xyz`     | (B, npoint, 3)               | The XYZ coordinates of the `npoint` sampled centroids. |
+| `new_features`| (B, mlp[-1], npoint)         | The learned and aggregated feature vectors for each of the `npoint` centroids. |
+| `inds`        | (B, npoint)                  | The indices of the sampled centroids, corresponding to their positions in the original input cloud. This is the key output for voting-based methods. |
