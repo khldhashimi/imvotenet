@@ -60,8 +60,7 @@ Output: A final new_features tensor of shape (B, mlp[-1], npoint).
 | `use_xyz`  | bool         | If `True`, concatenates the local XYZ coordinates to the point features before passing them to the MLP, making the network explicitly aware of local geometry.|
 | `pooling`  | str          | The type of pooling to use for feature aggregation. Options are 'max', 'avg', or 'rbf'. Default is 'max'.|
 | `sigma`    | float        | The sigma value used for the Radial Basis Function (rbf) pooling kernel.|
-| `normalize_xyz` | bool    |
-If True, normalizes the local XYZ coordinates of points in a group by the ball query radius.|
+| `normalize_xyz` | bool    | If True, normalizes the local XYZ coordinates of points in a group by the ball query radius.|
 ## Forward Pass
 
 ### Inputs
