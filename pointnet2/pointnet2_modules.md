@@ -102,32 +102,32 @@ This is done using the inverse distance weighted interpolation you analyzed. It 
 ### **Process of fp1**
 `features = self.fp1(end_points['sa3_xyz'], end_points['sa4_xyz'], end_points['sa3_features'], end_points['sa4_features'])`
 In this call:
-***unknown = P_3 (512 points)***
+```unknown = P_3 (512 points)```
 
-***known = P_4 (256 points)***
+```known = P_4 (256 points)```
 
-***unknow_feats = F_3 (features for the 512 points)***
+```unknow_feats = F_3 (features for the 512 points)```
 
-***known_feats = F_4 (features for the 256 points)***
+```known_feats = F_4 (features for the 256 points)```
 
 The goal is to compute a new, richer feature set for the points in P_3.
 
 Step 1: Find 3 Nearest Neighbors
-This step corresponds to dist, ***idx = pointnet2_utils.three_nn(unknown, known)***.
+This step corresponds to dist, ```idx = pointnet2_utils.three_nn(unknown, known```
 
-For each point ***p_i*** in ***P_3***, the three_nn_kernel on the GPU performs a search to find the 3 points in ***P_4*** that are closest to it in 3D space.
+For each point ```p_i``` in ```P_3```, the three_nn_kernel on the GPU performs a search to find the 3 points in ***P_4*** that are closest to it in 3D space.
 
-Let ***p_i*** be a single point from the unknown set ***P_3***. The process is:
+Let ```p_i``` be a single point from the unknown set ```P_3``` The process is:
 
-Calculate the squared Euclidean distance to every point ***q_j*** in ***P_4***:
-***d(p_i,q_j)^2 = ∣∣p_i−q_j∣∣^2***
-Find the three points ***q_i1***,***q_i2***,***q_i3*** from subset ***P_4*** that have the smallest distances.
+Calculate the squared Euclidean distance to every point ```q_j``` in ```P_4```
+```d(p_i,q_j)^2 = ∣∣p_i−q_j∣∣^2```
+Find the three points ```q_i1```,```q_i2```, ```q_i3``` from subset ```P_4``` that have the smallest distances.
 
 The CUDA kernel outputs:
 
 dist: The three smallest squared distances `(d(p_i,q_i,1)^2, d(p_i,q_i,2)^2, d(p_i,q_i,3)^2)`.
 
-idx: The indices of those three neighboring points within the ***P_4*** tensor.
+idx: The indices of those three neighboring points within the ```P_4``` tensor.
 
 Step 2: Calculate Inverse Distance Weights
 This step corresponds to the block:
