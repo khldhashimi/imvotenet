@@ -1,4 +1,4 @@
-class **PointnetSAModuleVotes** takes the ***xyz** coordinates of a pointcloud as input (variable xyz) along with the feature tensor of the 3D points.
+class **PointnetSAModuleVotes** takes the **xyz** coordinates of a pointcloud as input (variable xyz) along with the feature tensor of the 3D points.
 
 The ***xyz*** is a tensor of shape `(B, N, 3)` and it's coorsponding feature is a tensor of shape `(B, C, N)`, where N is the number of points in this pointcloud, ***B*** is the batch size and ***C*** is the number of the features for each point. That means we have an point cloud, which has ***N*** point with ***xyz*** coordinate and ***C*** additional features. For the raw input pointcloud ***N*** would be very high maybe around several ten thaousand point and the ***C=1*** which is intensity.
 
@@ -113,21 +113,21 @@ In this call:
 The goal is to compute a new, richer feature set for the points in P_3.
 
 Step 1: Find 3 Nearest Neighbors
-This step corresponds to dist, ```idx = pointnet2_utils.three_nn(unknown, known```
+This step corresponds to dist, ``idx = pointnet2_utils.three_nn(unknown, known``
 
-For each point ```p_i``` in ```P_3```, the three_nn_kernel on the GPU performs a search to find the 3 points in ***P_4*** that are closest to it in 3D space.
+For each point ``p_i`` in ``P_3``, the three_nn_kernel on the GPU performs a search to find the 3 points in ***P_4*** that are closest to it in 3D space.
 
-Let ```p_i``` be a single point from the unknown set ```P_3``` The process is:
+Let ``p_i`` be a single point from the unknown set ``P_3`` The process is:
 
-Calculate the squared Euclidean distance to every point ```q_j``` in ```P_4```
-```d(p_i,q_j)^2 = ∣∣p_i−q_j∣∣^2```
-Find the three points ```q_i1```,```q_i2```, ```q_i3``` from subset ```P_4``` that have the smallest distances.
+Calculate the squared Euclidean distance to every point ``q_j`` in ``P_4``
+``d(p_i,q_j)^2 = ∣∣p_i−q_j∣∣^2``
+Find the three points ``q_i1``,``q_i2``, ``q_i3`` from subset ``P_4`` that have the smallest distances.
 
 The CUDA kernel outputs:
 
 dist: The three smallest squared distances `(d(p_i,q_i,1)^2, d(p_i,q_i,2)^2, d(p_i,q_i,3)^2)`.
 
-idx: The indices of those three neighboring points within the ```P_4``` tensor.
+idx: The indices of those three neighboring points within the ``P_4`` tensor.
 
 **Step 2: Calculate Inverse Distance Weights**
 This step corresponds to the block:
@@ -142,12 +142,12 @@ weight = dist_recip / norm
 This step corresponds to ``interpolated_feats = pointnet2_utils.three_interpolate(known_feats, idx, weight)``.
 
 The three_interpolate_kernel on the GPU uses the indices and weights to compute a new feature vector for each point ``p_i``
-in ``P_3``. Let $F_4^i$ be the feature vector of the ```q_l```, the ``l-th`` point in set $P_4$, which ist must near to '''p_i'''. The new propagated (interpolated) feature to ``p_i``, the ```i-th``` point of the $P_3$ set, so called $newF_3^i$ is:
+in ``P_3``. Let $F_4^i$ be the feature vector of the ``q_l``, the ``l-th`` point in set $P_4$, which ist must near to ''p_i''. The new propagated (interpolated) feature to ``p_i``, the ``i-th`` point of the $P_3$ set, so called $newF_3^i$ is:
 
 $$
 newF_3^i = \frac{\sum_{k=1}^{3} w_k F_4^i}{\sum_{k=1}^{3} w_k}
 $$
 
-where $w_k=\frac{1}{d(p_i,q_k)^2} K=1,2,3$
+$where w_k=\frac{1}{d(p_i,q_k)^2}$; $K=1,2,3$
 
 $newF_3^i$ is the inverse distance weighted average feature of 3 points in $P_4$ cumputed for one point in $P_3$
