@@ -150,4 +150,13 @@ $$
 
 $where w_k=\frac{1}{d(p_i,q_k)^2}$; $K=1,2,3$
 
-$newF_3^i$ is the inverse distance weighted average feature of 3 points in $P_4$ cumputed for one point in $P_3$
+$newF_3^i$ is the inverse distance weighted average feature of 3 points in $P_4$ computed for one point in $P_3$.
+
+The result, ``interpolated_feats``, is a tensor of shape ``(B, 256, 512)``, where each of the 512 points of sa3 layer now has a feature vector interpolated from the more abstract P_4 space.
+
+**Step 4: Concatenate and Refine with MLP**
+Concatenation (Skip Connection): The interpolated features are concatenated with the original features from the sa3 layer (unknow_feats).
+``new_features = torch.cat([interpolated_feats, unknow_feats], dim=1)``
+This combines the high-level context from the deeper layer ``newF_3^i``  with the fine-grained local detail from the current layer ``F_3^i``. The feature dimension becomes 256 + 256 = 512 ``(B, 512, 512)``.
+
+MLP: This combined feature tensor is passed through a shared MLP ([512, 256, 256]). This MLP processes each point's 512-dimensional feature vector to produce a final, refined 256-dimensional feature vector. This is the output of the fp1 module. It reshapes ``(B, 512, 512)`` to ``(B, 256, 512)`` tensor.
