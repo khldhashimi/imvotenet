@@ -129,10 +129,22 @@ dist: The three smallest squared distances `(d(p_i,q_i,1)^2, d(p_i,q_i,2)^2, d(p
 
 idx: The indices of those three neighboring points within the ```P_4``` tensor.
 
-Step 2: Calculate Inverse Distance Weights
+**Step 2: Calculate Inverse Distance Weights**
 This step corresponds to the block:
 ```Python
 
 dist_recip = 1.0 / (dist + 1e-8)
 norm = torch.sum(dist_recip, dim=2, keepdim=True)
-weight = dist_recip / norm``` 
+weight = dist_recip / norm```
+
+**Step 3: Interpolate Features**
+This step corresponds to ``interpolated_feats = pointnet2_utils.three_interpolate(known_feats, idx, weight)``.
+
+The three_interpolate_kernel on the GPU uses the indices and weights to compute a new feature vector for each point ``p_i``
+in ``P_3``. Let $F^4(q_i,k)$ be the feature vector of the ``k-th`` neighbor.
+
+$$
+f^j(x) = \frac{\sum_{i=1}^{i=3} w_i(x) f_i^4}{\sum_{i} w_i(x)}
+$$
+
+where $w_i(x)=\frac{1}{d(}$
