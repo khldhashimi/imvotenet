@@ -142,10 +142,10 @@ weight = dist_recip / norm
 This step corresponds to ``interpolated_feats = pointnet2_utils.three_interpolate(known_feats, idx, weight)``.
 
 The three_interpolate_kernel on the GPU uses the indices and weights to compute a new feature vector for each point ``p_i``
-in ``P_3``. Let $F^4(q_i,k)$ be the feature vector of the ``k-th`` neighbor.
+in ``P_3``. Let $F_i^4$ be the feature vector of the ``i-th`` nearst neighbor in $P_4$ set. The new propagated (interpolated) feature to the ```j-th``` point of the $P_3$ set, so called $newF_3^j$ is:
 
 $$
-f^j(x) = \frac{\sum_{i=1}^{i=3} w_i(x) f_i^4}{\sum_{i} w_i(x)}
+newF_3^j = \frac{\sum_{i=1}^{i=3} w_i F_4^i}{\sum_{i=1}^{i=3} w_i}
 $$
 
-where $w_i(x)=\frac{1}{d(}$
+where $w_i=\frac{1}{d(p_i,q_i)^2}$
