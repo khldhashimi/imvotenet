@@ -135,7 +135,8 @@ This step corresponds to the block:
 
 dist_recip = 1.0 / (dist + 1e-8)
 norm = torch.sum(dist_recip, dim=2, keepdim=True)
-weight = dist_recip / norm```
+weight = dist_recip / norm
+```
 
 **Step 3: Interpolate Features**
 This step corresponds to ``interpolated_feats = pointnet2_utils.three_interpolate(known_feats, idx, weight)``.
