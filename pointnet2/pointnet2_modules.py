@@ -371,7 +371,7 @@ class PointnetFPModule(nn.Module):
     def __init__(self, *, mlp: List[int], bn: bool = True):
         super().__init__()
         self.mlp = pt_utils.SharedMLP(mlp, bn=bn)
-
+    # features = self.fp1(end_points['sa3_xyz'], end_points['sa4_xyz'], end_points['sa3_features'], end_points['sa4_features'])
     def forward(
             self, unknown: torch.Tensor, known: torch.Tensor,
             unknow_feats: torch.Tensor, known_feats: torch.Tensor

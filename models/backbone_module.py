@@ -103,28 +103,48 @@ class Pointnet2Backbone(nn.Module):
         batch_size = pointcloud.shape[0]
 
         xyz, features = self._break_up_pc(pointcloud)
+        # xyz (B, N, 3), features (B, C=1, N)
 
         # --------- 4 SET ABSTRACTION LAYERS ---------
         xyz, features, fps_inds = self.sa1(xyz, features)
+        # Output: xyz (B, 2048, 3), features (B, C=128, 2048)
         end_points['sa1_inds'] = fps_inds
         end_points['sa1_xyz'] = xyz
-        end_points['sa1_features'] = features
+        end_points['sa1_features'] = features# (B, mlp[-1], npoint) =>(B, 128, 2048)
+        # we have 2048 sphere neighborhoods, each of raius 0.2
+        # each neighborhood (ball) has 128 features
+        # for the next sa layer each ball is considered as a point with 128 feature and the 3D position
+        # of each ball is in end_points['sa1_xyz'].
 
-        xyz, features, fps_inds = self.sa2(xyz, features) # this fps_inds is just 0,1,...,1023
+        xyz, features, fps_inds = self.sa2(xyz, features) # xyz in the input is the 3D position of 2048 different balls from previous layer sa1
+        # Output: xyz (B, 1024, 3), features (B, C=256, 1024)
         end_points['sa2_inds'] = fps_inds
         end_points['sa2_xyz'] = xyz
-        end_points['sa2_features'] = features
+        # end_points['sa2_xyz'] contains the 3D position of the center of the new 1024 neighborhoods 
+        end_points['sa2_features'] = features # (B, mlp[-1], npoint) =>(B, 256, 1024)
+        # now we have 1024 sphere neighborhoods in another stage, each of raius 0.4
+        # each neighborhood (ball) has 256 features
+        # for the next sa layer each ball is considered again as a point with 256 features and the 3D position
+        # of each ball is in end_points['sa2_xyz'].
 
-        xyz, features, fps_inds = self.sa3(xyz, features) # this fps_inds is just 0,1,...,511
+        xyz, features, fps_inds = self.sa3(xyz, features) # xyz in the input is the 3D position of 1024 different balls from previous layer sa2
+        # Output: xyz (B, 512, 3), features (B, C=256, 512)
         end_points['sa3_xyz'] = xyz
-        end_points['sa3_features'] = features
+        # end_points['sa3_xyz'] contains the 3D position of the center of the new 512 neighborhoods 
+        end_points['sa3_features'] = features # (B, mlp[-1], npoint) =>(B, 256, 512)
+        # now we have 512 sphere neighborhoods in a higher stage, each of raius 0.8
+        # each neighborhood (ball) has 256 features
+        # for the next sa layer each ball is considered again as a point with 256 features and the 3D position
+        # of each ball is in end_points['sa3_xyz'].
 
         xyz, features, fps_inds = self.sa4(xyz, features) # this fps_inds is just 0,1,...,255
+        # Output: xyz (B, 256, 3), features (B, C=256, 256)
         end_points['sa4_xyz'] = xyz
-        end_points['sa4_features'] = features
+        # end_points['sa4_xyz'] contains the 3D position of the center of the new 256 neighborhoods 
+        end_points['sa4_features'] = features# (B, mlp[-1], npoint) =>(B, 256, 256)
 
         # --------- 2 FEATURE UPSAMPLING LAYERS --------
-        features = self.fp1(end_points['sa3_xyz'], end_points['sa4_xyz'], end_points['sa3_features'], end_points['sa4_features']) #(B, mlp[-1]=256, n) tensor of the features of the unknown features
+        features = self.fp1(end_points['sa3_xyz'], end_points['sa4_xyz'], end_points['sa3_features'], end_points['sa4_features']) 
         features = self.fp2(end_points['sa2_xyz'], end_points['sa3_xyz'], end_points['sa2_features'], features) # (B, mlp[-1]=256, n) tensor of the features of the unknown features
         end_points['fp2_features'] = features
         end_points['fp2_xyz'] = end_points['sa2_xyz']
