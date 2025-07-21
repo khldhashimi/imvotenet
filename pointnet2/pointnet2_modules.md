@@ -83,7 +83,7 @@ Output: A final new_features tensor of shape (B, mlp[-1], npoint).
 
 # **PointnetFPModule**
 ## **Purpose and Usage of fp1 and fp2 (Feature Propagation Layers)**
-see paper: PointNet++: Deep Hierarchical Feature Learning on Point Sets in a Metric Space
+see paper: PointNet++: Deep Hierarchical Feature Learning on Point Sets in a Metric Space. 
 The SA layers (sa1 through sa4) act as an encoder. They progressively downsample the point cloud, moving from many points with simple features to few points with very rich, abstract, and contextual features. For example, sa4 has only 256 points, but each one has a 256-dimensional feature vector that understands a large region of the original point cloud.
 
 However, for many tasks like semantic segmentation or voting (as in VoteNet), you need to make a prediction for a much larger number of points, not just the 256 abstract ones. This is where the Feature Propagation (fp) layers come in. They act as a decoder.
@@ -160,3 +160,19 @@ Concatenation (Skip Connection): The interpolated features are concatenated with
 This combines the high-level context from the deeper layer ``newF_3^i``  with the fine-grained local detail from the current layer ``F_3^i``. The feature dimension becomes 256 + 256 = 512 ``(B, 512, 512)``.
 
 MLP: This combined feature tensor is passed through a shared MLP ([512, 256, 256]). This MLP processes each point's 512-dimensional feature vector to produce a final, refined 256-dimensional feature vector. This is the output of the fp1 module. It reshapes ``(B, 512, 512)`` to ``(B, 256, 512)`` tensor.
+
+
+### ***Process of fp2***
+``features = self.fp2(end_points['sa2_xyz'], end_points['sa3_xyz'], end_points['sa2_features'], features)``
+
+This process is mathematically identical to ``fp1``, but the inputs have shifted up one level in the hierarchy.
+
+``unknown = P_2 (1024 points)``
+
+``known = P_3 (512 points)`` => 512 initial points, each point enriched with the original and propagated features from sa4 layer.
+
+``unknow_feats = F_2 (features for the 1024 points)``
+
+``known_feats = The output of fp1`` (the newly computed rich features for the 512 points in P_3)
+
+The module repeats the exact same sequence of Find Neighbors -> Calculate Weights -> Interpolate Features -> Concatenate -> MLP, but this time it propagates the refined features from P_3 up to the even denser point set $P_2$. The final output is ``end_points['fp2_features']``, the feature set for the 1024 points that will be used for subsequent processing like voting.
